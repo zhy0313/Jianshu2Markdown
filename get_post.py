@@ -102,12 +102,20 @@ class ThreadPost(threading.Thread):
 
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-u", "--user", help="user id here")
+    parser.add_argument("-hd", '--htmldir', help="html dir here")
+    args = parser.parse_args()
+    if not args.user:
+        print("please put userid")
+        return
+    if not args.htmldir:
+        args.htmldir = "html"
     os.environ["PYTHONIOENCODING"] = 'utf-8'
-    html_dir = 'html'  # TODO get html_dir from command line
-    if not os.path.exists(html_dir):
-        os.mkdir(html_dir)
-    user_id = 'f8c2b4174a91'
-    client = GetPost(user_id, html_dir)
+    if not os.path.exists(args.htmldir):
+        os.mkdir(args.htmldir)
+    client = GetPost(args.user, args.htmldir)
     client.start()
 
 
