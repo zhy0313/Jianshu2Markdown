@@ -9,7 +9,7 @@ from bs4 import BeautifulSoup
 BASE = "http://www.jianshu.com/"
 BASE_PROFILE = BASE + 'users/'
 PATTERN = re.compile(r'href="(.*?)"')
-pagination = 'latest_articles?page={}'
+PAGINATION = 'latest_articles?page={}'
 THREAD_NUM = 5
 
 
@@ -34,14 +34,14 @@ class GetPost(object):
         end = self.get_profile_end()
 
         for i in range(1, int(end)+1):
-            self.profile_queue.put(self.url + pagination.format(i))
+            self.profile_queue.put(self.url + PAGINATION.format(i))
 
-        for _ in range(3):
+        for _ in range(THREAD_NUM // 3):
             t = ThreadProfile(self.profile_queue, self.post_queue)
             t.setDaemon(True)
             t.start()
 
-        for _ in range(5):
+        for _ in range(THREAD_NUM):
             t = ThreadPost(self.post_queue, self.html_dir, self.md_dir)
             t.setDaemon(True)
             t.start()
@@ -66,7 +66,7 @@ class ThreadProfile(threading.Thread):
             self.profile_queue.task_done()
 
     def _get_posts_url(self, url):
-        res = requests.get(url+pagination)
+        res = requests.get(url+PAGINATION)
         bsobj = BeautifulSoup(res.text, "html.parser")
         items = bsobj.find_all('h4', class_='title')
 
@@ -82,8 +82,8 @@ class ThreadPost(threading.Thread):
         self.queue = queue
         self.html_dir = html_dir
         self.md_dir = md_dir
-        self.h = html2text.HTML2Text()
-        self.h.body_width = 0
+        self.convertor = html2text.HTML2Text()
+        self.convertor.body_width = 0
 
     def run(self):
         while True:
@@ -102,7 +102,7 @@ class ThreadPost(threading.Thread):
         self._download(self.convert2md(text), title + '.md', False)
 
     def convert2md(self, text):
-        return self.h.handle(text)
+        return self.convertor.handle(text)
 
     def _download(self, content, name, html=True):
         if html:
