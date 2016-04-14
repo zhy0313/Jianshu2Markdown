@@ -28,12 +28,13 @@ class GetPost(object):
         last_link = bsobj.find('li', class_='last')
         pattern = re.compile(r'href=".*?page=(\d+)')
         end = re.search(pattern, str(last_link))
+        end = 1 if end is None else end
         return int(end.group(1))
 
     def start(self):
         end = self.get_profile_end()
 
-        for i in range(1, int(end)+1):
+        for i in range(1, end+1):
             self.profile_queue.put(self.url + PAGINATION.format(i))
 
         for _ in range(THREAD_NUM // 3):
