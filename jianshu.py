@@ -28,8 +28,8 @@ class GetPost(object):
         last_link = bsobj.find('li', class_='last')
         pattern = re.compile(r'href=".*?page=(\d+)')
         end = re.search(pattern, str(last_link))
-        end = 1 if end is None else end
-        return int(end.group(1))
+        return 1 if end is None else int(end.group(1))
+        
 
     def start(self):
         end = self.get_profile_end()
