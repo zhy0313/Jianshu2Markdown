@@ -23,6 +23,7 @@ class GetPost(object):
         self.profile_queue = Queue()  # get user's profile, pagination
 
     def get_profile_end(self):
+        """Get pagination end number"""
         res = requests.get(self.url)
         bsobj = BeautifulSoup(res.text, 'html.parser')
         last_link = bsobj.find('li', class_='last')
@@ -34,13 +35,13 @@ class GetPost(object):
     def start(self):
         end = self.get_profile_end()
 
-        for i in range(1, end+1):
-            self.profile_queue.put(self.url + PAGINATION.format(i))
-
         for _ in range(THREAD_NUM // 3):
             t = ThreadProfile(self.profile_queue, self.post_queue)
             t.setDaemon(True)
             t.start()
+
+        for i in range(1, end+1):
+            self.profile_queue.put(self.url + PAGINATION.format(i))
 
         for _ in range(THREAD_NUM):
             t = ThreadPost(self.post_queue, self.html_dir, self.md_dir)
@@ -99,18 +100,16 @@ class ThreadPost(threading.Thread):
         result = bsobj.find('div', class_='show-content')
         # print(result)
         text = result.prettify()
-        self._download(text, title + '.html')
-        self._download(self.convert2md(text), title + '.md', False)
+        self._download(text, title + '.html', self.html_dir)
+        self._download(self._convert2md(text), title + '.md', self.md_dir)
 
-    def convert2md(self, text):
+    def _convert2md(self, text):
         return self.convertor.handle(text)
 
-    def _download(self, content, name, html=True):
-        if html:
-            dire = self.html_dir
-        else:
-            dire = self.md_dir
-        with open(os.path.join(dire, name), 'w', encoding='utf-8') as f:
+    def _download(self, content, name, directory):
+        if not os.path.exists(directory):
+            os.mkdir(directory)
+        with open(os.path.join(directory, name), 'w', encoding='utf-8') as f:
             f.write(content)
 
 
