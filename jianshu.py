@@ -8,19 +8,25 @@ from bs4 import BeautifulSoup
 
 BASE = "http://www.jianshu.com/"
 BASE_PROFILE = BASE + 'users/'
+BASE_NOTEBOOK = BASE + 'notebooks/'
 PATTERN = re.compile(r'href="(.*?)"')
 PAGINATION = 'latest_articles?page={}'
 THREAD_NUM = 5
 
 
-class GetPost(object):
-
-    def __init__(self, user_id, html_dir, md_dir):
-        self.url = BASE_PROFILE + str(user_id) + '/'
+class BasicSpider(object):
+    def __init__(self, html_dir, md_dir):
         self.html_dir = html_dir
         self.md_dir = md_dir
-        self.post_queue = Queue()     # put post's url
-        self.profile_queue = Queue()  # get user's profile, pagination
+        self.post_queue = Queue()  # put post's url
+
+
+class ProfileSpider(BasicSpider):
+
+    def __init__(self, user_id, html_dir, md_dir):
+        super().__init__(html_dir, md_dir)
+        self.url = BASE_PROFILE + str(user_id) + '/'
+        self.profile_queue = Queue()  # put user's profile
 
     def get_profile_end(self):
         """Get pagination end number"""
@@ -30,7 +36,6 @@ class GetPost(object):
         pattern = re.compile(r'href=".*?page=(\d+)')
         end = re.search(pattern, str(last_link))
         return 1 if end is None else int(end.group(1))
-        
 
     def start(self):
         end = self.get_profile_end()
@@ -50,6 +55,31 @@ class GetPost(object):
 
         self.profile_queue.join()
         self.post_queue.join()
+
+
+class NotebookSpider(BasicSpider):
+
+    def __init__(self, nb_id, html_dir, md_dir):
+        super().__init__(html_dir, md_dir)
+        self.url = BASE_NOTEBOOK + str(nb_id) + '/latest'
+
+    def start(self):
+        self._get_posts_url(self.url)
+        for _ in range(THREAD_NUM):
+            t = ThreadPost(self.post_queue, self.html_dir, self.md_dir)
+            t.setDaemon(True)
+            t.start()
+
+        self.post_queue.join()
+
+    def _get_posts_url(self, url):
+        res = requests.get(url)
+        bsobj = BeautifulSoup(res.text, "html.parser")
+        items = bsobj.find_all('h4', class_='title')
+
+        for item in items:
+            print(BASE + re.search(PATTERN, str(item)).group(1))
+            self.post_queue.put(BASE + re.search(PATTERN, str(item)).group(1))
 
 
 class ThreadProfile(threading.Thread):
@@ -115,25 +145,26 @@ class ThreadPost(threading.Thread):
 
 def main():
     import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-u", "--user", help="user id here")
-    parser.add_argument("-hd", '--htmldir', help="html dir here")
-    parser.add_argument("-md", '--mddir', help="md dir here")
-    args = parser.parse_args()
-    if not args.user:
-        print("please put userid")
-        return
-    if not args.htmldir:
-        args.htmldir = "html"
-    if not args.mddir:
-        args.mddir = "md"
     os.environ["PYTHONIOENCODING"] = 'utf-8'
-    if not os.path.exists(args.htmldir):
-        os.mkdir(args.htmldir)
-    if not os.path.exists(args.mddir):
-        os.mkdir(args.mddir)
-    client = GetPost(args.user, args.htmldir, args.mddir)
-    client.start()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-u", "--user", help="user id")
+    parser.add_argument("-n", "--notebook", help="notebook id")
+    parser.add_argument("-hd", '--htmldir', help="html dir")
+    parser.add_argument("-md", '--mddir', help="md dir")
+    args = parser.parse_args()
+    html_dir = args.htmldir if args.htmldir else 'html'
+    md_dir = args.mddir if args.mddir else 'md'
+    if not os.path.exists(html_dir):
+        os.mkdir(html_dir)
+    if not os.path.exists(md_dir):
+        os.mkdir(md_dir)
+    client = None
+    if args.user:
+        client = ProfileSpider(args.user, html_dir, md_dir)
+    elif args.notebook:
+        client = NotebookSpider(args.notebook, html_dir, md_dir)
+    if client:
+        client.start()
 
 
 if __name__ == '__main__':
