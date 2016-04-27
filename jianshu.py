@@ -12,6 +12,7 @@ BASE_NOTEBOOK = BASE + 'notebooks/'
 PATTERN = re.compile(r'href="(.*?)"')
 PAGINATION = 'latest_articles?page={}'
 THREAD_NUM = 5
+TIMEOUT = 3
 
 
 class BasicSpider(object):
@@ -30,8 +31,11 @@ class ProfileSpider(BasicSpider):
 
     def get_profile_end(self):
         """Get pagination end number"""
-        res = requests.get(self.url)
-        bsobj = BeautifulSoup(res.text, 'html.parser')
+        text = _get_text(self.url)
+        if text is None:
+            return
+
+        bsobj = BeautifulSoup(text, 'html.parser')
         last_link = bsobj.find('li', class_='last')
         pattern = re.compile(r'href=".*?page=(\d+)')
         end = re.search(pattern, str(last_link))
@@ -39,6 +43,8 @@ class ProfileSpider(BasicSpider):
 
     def start(self):
         end = self.get_profile_end()
+        if not isinstance(end, int):
+            return
 
         for _ in range(THREAD_NUM // 3):
             t = ThreadProfile(self.profile_queue, self.post_queue)
@@ -73,10 +79,12 @@ class NotebookSpider(BasicSpider):
         self.post_queue.join()
 
     def _get_posts_url(self, url):
-        res = requests.get(url)
-        bsobj = BeautifulSoup(res.text, "html.parser")
-        items = bsobj.find_all('h4', class_='title')
+        text = _get_text(url)
+        if text is None:
+            return
 
+        bsobj = BeautifulSoup(text, "html.parser")
+        items = bsobj.find_all('h4', class_='title')
         for item in items:
             print(BASE + re.search(PATTERN, str(item)).group(1))
             self.post_queue.put(BASE + re.search(PATTERN, str(item)).group(1))
@@ -98,10 +106,12 @@ class ThreadProfile(threading.Thread):
             self.profile_queue.task_done()
 
     def _get_posts_url(self, url):
-        res = requests.get(url+PAGINATION)
-        bsobj = BeautifulSoup(res.text, "html.parser")
-        items = bsobj.find_all('h4', class_='title')
+        text = _get_text(url)
+        if text is None:
+            return
 
+        bsobj = BeautifulSoup(text, "html.parser")
+        items = bsobj.find_all('h4', class_='title')
         for item in items:
             print(BASE + re.search(PATTERN, str(item)).group(1))
             self.post_queue.put(BASE + re.search(PATTERN, str(item)).group(1))
@@ -124,8 +134,10 @@ class ThreadPost(threading.Thread):
             self.queue.task_done()
 
     def get_post(self, url):
-        res = requests.get(url)
-        bsobj = BeautifulSoup(res.text, 'html.parser').find('div', class_="container")
+        text = _get_text(url)
+        if text is None:
+            return
+        bsobj = BeautifulSoup(text, 'html.parser').find('div', class_="container")
         title = bsobj.find('h1', class_="title").text
         result = bsobj.find('div', class_='show-content')
         # print(result)
@@ -141,6 +153,19 @@ class ThreadPost(threading.Thread):
             os.mkdir(directory)
         with open(os.path.join(directory, name), 'w', encoding='utf-8') as f:
             f.write(content)
+
+
+def _get_text(url):
+    try:
+        res = requests.get(url, timeout=TIMEOUT)
+    except requests.Timeout:
+        print("access to {} timeout".format(url))
+        return
+    else:
+        if res.status_code == 200:
+            return res.text
+        else:
+            return
 
 
 def main():
